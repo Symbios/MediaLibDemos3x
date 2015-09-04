@@ -8,26 +8,35 @@
 
 #import "ViewController.h"
 #import "DEBUG.h"
-#import "MemoryTicker.h"
 #import "BroadcastStreamClient.h"
 #import "MediaStreamPlayer.h"
 #import "MPMediaEncoder.h"
+#import "SocialCam-Swift.h"
 
+NSString * const TOKEN_KEY = @"tokenQR";
 
 @interface ViewController () <MPIMediaStreamEvent> {
     
-    MemoryTicker            *memoryTicker;
     RTMPClient              *socket;
     BroadcastStreamClient   *upstream;
+    
+    NSString *apiURL;
+    NSString *endpoint;
+    NSString *streamURL;
+    NSString *streamId;
+    
+    NSString *textQR;
     
     MPVideoResolution       resolution;
     AVCaptureVideoOrientation orientation;
 }
 
--(void)sizeMemory:(NSNumber *)memory;
 -(void)setDisconnect;
-@end
 
+//QR Code
+@property (nonatomic) BOOL isReading;
+
+@end
 
 @implementation ViewController
 
@@ -40,22 +49,25 @@
     
     [super viewDidLoad];
     
-    memoryTicker = [[MemoryTicker alloc] initWithResponder:self andMethod:@selector(sizeMemory:)];
-    memoryTicker.asNumber = YES;
-    
     socket = nil;
     upstream = nil;
-
-    hostTextField.text = @"rtmp://10.0.1.62:1935/live";
-    hostTextField.delegate = self;
-
-    streamTextField.text = @"teststream";
-	streamTextField.delegate = self;
+    
+    [loading stopAnimating];
+    
+    apiURL = @"";
+    
+    //QRCode;
+    _isReading = NO;
+    _captureSession = nil;
+    
+    [self isTokenSavedOnDevice];
+    [self showNextView];
 }
 
 -(void)viewDidUnload {
     [super viewDidUnload];
     // Release any retained subviews of the main view.
+    [[ UIApplication sharedApplication] setIdleTimerDisabled: NO];
 }
 
 -(NSUInteger)supportedInterfaceOrientations {
@@ -63,17 +75,7 @@
 }
 
 #pragma mark -
-#pragma mark Private Methods 
-
-// MEMORY
-
--(void)sizeMemory:(NSNumber *)memory {
-#if 0
-    memoryLabel.text = [NSString stringWithFormat:@"%d", [memory intValue]];
-#else
-    memoryLabel.text = [NSString stringWithFormat:@"%g", [upstream getMeanFPS]];
-#endif
-}
+#pragma mark Private Methods
 
 // ALERT
 
@@ -84,25 +86,57 @@
     });
 }
 
+-(BOOL)validToken {
+    return tokenText.length > 0? YES : NO;
+}
+
 // ACTIONS
+-(void)doConnectAPI {
+    if( [self validToken] )
+    {
+        [loading startAnimating];
+        endpoint = [NSString stringWithFormat: @"/status/%@/1", tokenText];
+        //Call API
+        [[CameraApi sharedInstance] setEndpoint: endpoint];
+        //Synchronous
+        [[CameraApi sharedInstance] callAPI];
+        _Bool status = [[CameraApi sharedInstance] getStatus];
+        if(status)
+        {
+            NSDictionary *result = [[CameraApi sharedInstance] getResult];
+            streamURL = [NSString stringWithFormat: @"rtmp://%@/%@",result[@"stream_server"],result[@"stream_app"]];
+            streamId = result[@"stream_id"];
+            NSLog(@"URL: %@/%@", streamURL, streamId);
+            [self doConnect];
+            [[ UIApplication sharedApplication] setIdleTimerDisabled: YES];
+            toolbar.hidden = NO;
+            secondCV.hidden = YES;
+        }
+    }
+    else
+    {
+        [self showAlert: @"TOKEN cannot be empty"];
+    }
+}
+
 
 -(void)doConnect {
     
     //resolution = RESOLUTION_LOW;
-    resolution = RESOLUTION_CIF;
-    //resolution = RESOLUTION_MEDIUM;
+    //resolution = RESOLUTION_CIF;
+    resolution = RESOLUTION_MEDIUM;
     //resolution = RESOLUTION_VGA;
     
 #if 1 // use inside RTMPClient instance
     
-    upstream = [[BroadcastStreamClient alloc] init:hostTextField.text resolution:resolution];
+    upstream = [[BroadcastStreamClient alloc] init:streamURL resolution:resolution];
     //upstream = [[BroadcastStreamClient alloc] initOnlyAudio:hostTextField.text];
     //upstream = [[BroadcastStreamClient alloc] initOnlyVideo:hostTextField.text resolution:resolution];
 
 #else // use outside RTMPClient instance
     
     if (!socket) {
-        socket = [[RTMPClient alloc] init:hostTextField.text];
+        socket = [[RTMPClient alloc] init:streamURL];
         if (!socket) {
             [self showAlert:@"Connection has not be created"];
             return;
@@ -133,11 +167,34 @@
     //orientation = AVCaptureVideoOrientationLandscapeLeft;
     [upstream setVideoOrientation:orientation];
     
-    [upstream stream:streamTextField.text publishType:PUBLISH_LIVE];
+    [upstream stream:streamId publishType:PUBLISH_LIVE];
     //[upstream stream:streamTextField.text orientation:orientation publishType:PUBLISH_RECORD];
     //[upstream stream:streamTextField.text orientation:orientation publishType:PUBLISH_APPEND];
     
-    btnConnect.title = @"Disconnect";
+    if(![upstream isUsingFrontFacingCamera])
+    {
+        [upstream switchCameras];
+    }
+    
+}
+
+-(void)doDisconnectAPI {
+    if( [self validToken] )
+    {
+        endpoint = [NSString stringWithFormat: @"/status/%@/0", tokenText];
+        //Call API
+        [[CameraApi sharedInstance] setEndpoint: endpoint];
+        //    [[CameraApi sharedInstance] asyncResult];
+        //Synchronous
+        NSDictionary *jsonData = [[CameraApi sharedInstance] getResult];
+        NSLog(@"JSON: %@", jsonData);
+
+        [self doDisconnect];
+        [[ UIApplication sharedApplication] setIdleTimerDisabled: NO];
+        
+        toolbar.hidden = YES;
+        secondCV.hidden = NO;
+    }
 }
 
 -(void)doDisconnect {
@@ -152,15 +209,8 @@
     [upstream teardownPreviewLayer];
     upstream = nil;
     
-    btnConnect.title = @"Connect";
-    btnToggle.enabled = NO;
-    btnPublish.title = @"Start";
-    btnPublish.enabled = NO;
-    
-    hostTextField.hidden = NO;
-    streamTextField.hidden = NO;
-    
     previewView.hidden = YES;
+    [self doDisconnectAPI];
 }
 
 -(void)sendMetadata {
@@ -171,6 +221,33 @@
     [upstream sendMetadata:meta event:@"changedCamera:"];
 }
 
+-(BOOL)isTokenSavedOnDevice {
+    textQR = [[NSUserDefaults standardUserDefaults] stringForKey:TOKEN_KEY];
+    if( textQR != nil )
+    {
+        [self getDataFromQR];
+    }
+    successToken = NO;
+    NSLog(@"ITSOD: %@", tokenText);
+    if(tokenText.length > 0)
+    {
+        pairedTokenLabel.text = [NSString stringWithFormat:@"Device Token: %@",tokenText];
+        successToken = YES;
+    }
+    
+    return successToken;
+}
+
+-(void)saveTokenOnDevice {
+    NSLog(@"SAVE TOKEN: %@", textQR);
+    [[NSUserDefaults standardUserDefaults] setObject:textQR forKey:TOKEN_KEY];
+}
+
+-(void)clearTokenOnDevice {
+    NSLog(@"CLEAR TOKEN: %@", textQR);
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:TOKEN_KEY];
+}
+
 #pragma mark -
 #pragma mark Public Methods 
 
@@ -178,14 +255,15 @@
 
 -(IBAction)connectControl:(id)sender {
     
-    NSLog(@"connectControl: host = %@", hostTextField.text);
+    NSLog(@"connectControl: host = %@", apiURL);
     
-    (!upstream) ? [self doConnect] : [self doDisconnect];
+    (!upstream) ? [self doConnectAPI] : [self doDisconnectAPI];
+    
 }
 
 -(IBAction)publishControl:(id)sender {
    
-    NSLog(@"publishControl: stream = %@", streamTextField.text);
+    NSLog(@"publishControl: stream = %@", tokenText);
 
     (upstream.state != STREAM_PLAYING) ? [upstream start] : [upstream pause];
 }
@@ -202,6 +280,13 @@
     [self sendMetadata];
 }
 
+-(IBAction)unpairDevice:(id)sender {
+    successToken = NO;
+    tokenText = @"";
+    textQR = @"";
+    [self clearTokenOnDevice];
+    [self showNextView];
+}
 
 #pragma mark -
 #pragma mark UITextFieldDelegate Methods 
@@ -243,10 +328,6 @@
         }
             
         case STREAM_PAUSED: {
-            
-            btnPublish.title = @"Start";
-            btnToggle.enabled = NO;
-            
             break;
         }
             
@@ -254,14 +335,9 @@
            
             [upstream setPreviewLayer:previewView];
 
-            hostTextField.hidden = YES;
-            streamTextField.hidden = YES;
+            [loading stopAnimating];
             previewView.hidden = NO;
-            
-            btnPublish.title = @"Pause";
-            btnPublish.enabled = YES;
             btnToggle.enabled = YES;
-            
             break;
         }
             
@@ -306,5 +382,130 @@
     [upstream sendMetadata:@{@"videoTimestamp":[NSNumber numberWithInt:timestamp], @"bufferSize":[NSNumber numberWithInt:bufferSize], @"width":[NSNumber numberWithInt:width], @"height":[NSNumber numberWithInt:height]} event:@"videoFrameOptions:"];
 }
 #endif
+
+
+//QR CODE
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection {
+    if (metadataObjects != nil && [metadataObjects count] > 0) {
+        AVMetadataMachineReadableCodeObject *metadataObj = [metadataObjects objectAtIndex:0];
+        if ([[metadataObj type] isEqualToString:AVMetadataObjectTypeQRCode]) {
+            textQR = [metadataObj stringValue];
+            [self performSelectorOnMainThread:@selector(getDataFromQR) withObject:nil waitUntilDone:NO];
+            
+            [self performSelectorOnMainThread:@selector(stopReading) withObject:nil waitUntilDone:NO];
+            _isReading = NO;
+        }
+    }
+}
+
+- (void)getDataFromQR:(BOOL)displayAlert {
+    NSURL *url = [NSURL URLWithString:textQR];
+    if([url scheme] == nil || [url host] == nil || [url lastPathComponent] == nil)
+    {
+        successToken = NO;
+        if(displayAlert)
+        {
+            [self showAlert: @"Invalid QR Code"];
+        }
+    }
+    else
+    {
+        successToken = YES;
+        apiURL = [NSString stringWithFormat:@"%@://%@", [url scheme], [url host]];
+        tokenText = [url lastPathComponent];
+        NSLog(@"TOKEN TEXT: %@",
+              tokenText);
+    }
+}
+
+- (void)getDataFromQR {
+    [self getDataFromQR:YES];
+}
+
+- (BOOL)startReading {
+    
+    NSError *error;
+    AVCaptureDevice *captureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:captureDevice error: &error];
+    if(!input)
+    {
+        NSLog(@"Error StartReading: %@", [error localizedDescription]);
+        return NO;
+    }
+    
+    _captureSession = [[AVCaptureSession alloc] init];
+    [_captureSession addInput:input];
+    AVCaptureMetadataOutput *captureMetadataOutput = [[AVCaptureMetadataOutput alloc] init];
+    [_captureSession addOutput:captureMetadataOutput];
+    
+    dispatch_queue_t dispatchQueue;
+    dispatchQueue = dispatch_queue_create("myQueue", NULL);
+    [captureMetadataOutput setMetadataObjectsDelegate: self queue:dispatchQueue];
+    [captureMetadataOutput setMetadataObjectTypes:[NSArray arrayWithObject:AVMetadataObjectTypeQRCode]];
+    
+    _videoPreviewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:_captureSession];
+    [_videoPreviewLayer setVideoGravity:AVLayerVideoGravityResizeAspectFill];
+    [_videoPreviewLayer setFrame:viewScan.layer.bounds];
+    [viewScan.layer addSublayer:_videoPreviewLayer];
+    
+    [_captureSession startRunning];
+    
+    return YES;
+}
+
+-(void)stopReading {
+    [_captureSession stopRunning];
+    _captureSession = nil;
+
+    [_videoPreviewLayer removeFromSuperlayer];
+    
+    [self showNextView];
+}
+
+-(void)hideShowQRScan {
+
+    if(_isReading) {
+        [self stopReading];
+        _isReading = !_isReading;
+    }
+    else {
+        if([self startReading]) {
+            _isReading = !_isReading;
+            viewScan.hidden = NO;
+            btnBack.hidden = NO;
+            firstCV.hidden = YES;
+            secondCV.hidden = YES;
+        }
+    }
+}
+
+-(void)showNextView {
+    viewScan.hidden = YES;
+    btnBack.hidden = YES;
+    if(successToken)
+    {
+        firstCV.hidden = YES;
+        secondCV.hidden = NO;
+        //Save token on device for next time
+        [self saveTokenOnDevice];
+    }
+    else
+    {
+        firstCV.hidden = NO;
+        secondCV.hidden = YES;
+    }
+}
+
+-(IBAction)scanQRCode:(id)sender {
+    
+    [self hideShowQRScan];
+}
+
+
+-(IBAction)cancelScanQRCode:(id)sender {
+    
+    [self hideShowQRScan];
+}
 
 @end

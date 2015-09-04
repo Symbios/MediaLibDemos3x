@@ -7,20 +7,46 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
 
-@interface ViewController : UIViewController <UITextFieldDelegate> {
+extern NSString * const TOKEN_KEY;
+
+@interface ViewController : UIViewController <AVCaptureMetadataOutputObjectsDelegate> {
     
-	IBOutlet UITextField	*hostTextField;
-	IBOutlet UITextField	*streamTextField;
+    BOOL     successToken;
+    NSString *tokenText;
+    
     IBOutlet UIView         *previewView;
-    IBOutlet UIBarButtonItem *btnConnect;
+    IBOutlet UIBarButtonItem *btnDisconnect;
     IBOutlet UIBarButtonItem *btnToggle;
-    IBOutlet UIBarButtonItem *btnPublish;
-    IBOutlet UILabel        *memoryLabel;
+    IBOutlet UIButton       *btnConnect; //Button to start streaming
+    IBOutlet UIButton       *btnScan;  //Button to scan QR Code
+    IBOutlet UIButton       *btnBack;  //Button to cancel QR Scanning
+    IBOutlet UIButton       *btnUnpair;//Button to unpair device
+    IBOutlet UIActivityIndicatorView *loading; //Spinning
+    IBOutlet UIView         *firstCV;  //First ControlView (Instrucctions)
+    IBOutlet UIView         *secondCV; //Second ControlView (Broadcast)
+    IBOutlet UIToolbar      *toolbar; //Bottom toolbar to disconnect and toggle cameras
+    IBOutlet UILabel        *pairedTokenLabel;
+    
+    IBOutlet UIView          *viewScan;
+    IBOutlet UIBarButtonItem *scanButton;
+    
+    IBOutlet UIScrollView *scrollView;
 }
 
 -(IBAction)connectControl:(id)sender;
 -(IBAction)publishControl:(id)sender;
 -(IBAction)camerasToggle:(id)sender;
+-(IBAction)unpairDevice:(id)sender;
+
+//QR Code
+-(BOOL)startReading;
+-(void)stopReading;
+@property (nonatomic, strong) AVCaptureSession *captureSession;
+@property (nonatomic, strong) AVCaptureVideoPreviewLayer *videoPreviewLayer;
+
+-(IBAction)scanQRCode:(id)sender;
+
 
 @end
