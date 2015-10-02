@@ -11,7 +11,7 @@ import Foundation
 class CameraApi: RestApiManager {
     static let sharedInstance = CameraApi()
     
-    let baseURL = "http://camapi.slb/"
+    var baseURL = "http://camapi.slb"
     
     var apiResult: JSON?;
     
@@ -27,7 +27,13 @@ class CameraApi: RestApiManager {
         super.init(baseURL: baseURL)
     }
     
+    func setBaseUrl(url:String) -> Void {
+        NSLog("Base: %@", url)
+        baseURL = url
+    }
+    
     func setEndpoint(endpoint:String) -> Void {
+        NSLog("Url %@", baseURL + endpoint);
         setApiUrl(baseURL+endpoint)
     }
     
@@ -52,7 +58,7 @@ class CameraApi: RestApiManager {
             result["active"]            = json["result"]["active"].asString
         }else
         {
-            print("ERROR API")
+            print("ERROR API" + apiURL)
             errors = json["errors"].asArray
         }
     }

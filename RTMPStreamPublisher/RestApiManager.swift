@@ -28,30 +28,34 @@ class RestApiManager: NSObject {
         
         let task = session.dataTaskWithRequest(request, completionHandler: {
             data, response, error -> Void in
-            let json:JSON = JSON(data: data)
+            let json:JSON = JSON(data: data!)
 //            onCompletion(json, error)
             if(error == nil)
             {
                 self.jsonData = json
             }else
             {
-                NSLog("Error: \(error.localizedDescription)")
+                NSLog("Error: \(error!.localizedDescription)")
             }
         })
         task.resume()
     }
     
     func sendRequest() -> JSON {
-        var request = NSURLRequest(URL: NSURL(string: apiURL)!)
+        let request = NSURLRequest(URL: NSURL(string: apiURL)!)
         var response: NSURLResponse?
-        var error: NSErrorPointer = nil
-        var data = NSURLConnection.sendSynchronousRequest(request, returningResponse: &response, error: error)
-        
+        let error: NSErrorPointer = nil
+        var data: NSData = NSData()
+        do
+        {
+            data = try NSURLConnection.sendSynchronousRequest(request, returningResponse: &response)
+
+        } catch {}
         if(error != nil)
         {
             return JSON(string: "{\"valid\": false, \"error\": \"\(error)\"")
         }
-        return JSON(data: data!)
+        return JSON(data: data)
     }
 }
 

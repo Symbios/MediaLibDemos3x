@@ -69,11 +69,11 @@ NSString * const TOKEN_KEY = @"tokenQR";
     // Release any retained subviews of the main view.
     [[ UIApplication sharedApplication] setIdleTimerDisabled: NO];
 }
-
+#if 0
 -(NSUInteger)supportedInterfaceOrientations {
     return UIInterfaceOrientationMaskPortrait;
 }
-
+#endif
 #pragma mark -
 #pragma mark Private Methods
 
@@ -97,6 +97,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
         [loading startAnimating];
         endpoint = [NSString stringWithFormat: @"/status/%@/1", tokenText];
         //Call API
+        [[CameraApi sharedInstance] setBaseUrl: apiURL];
         [[CameraApi sharedInstance] setEndpoint: endpoint];
         //Synchronous
         [[CameraApi sharedInstance] callAPI];
@@ -106,9 +107,8 @@ NSString * const TOKEN_KEY = @"tokenQR";
             NSDictionary *result = [[CameraApi sharedInstance] getResult];
             streamURL = [NSString stringWithFormat: @"rtmp://%@/%@",result[@"stream_server"],result[@"stream_app"]];
             streamId = result[@"stream_id"];
-            NSLog(@"URL: %@/%@", streamURL, streamId);
+            //NSLog(@"URL: %@/%@", streamURL, streamId);
             [self doConnect];
-            [[ UIApplication sharedApplication] setIdleTimerDisabled: YES];
             toolbar.hidden = NO;
             secondCV.hidden = YES;
         }
@@ -119,9 +119,9 @@ NSString * const TOKEN_KEY = @"tokenQR";
     }
 }
 
-
 -(void)doConnect {
-    
+
+    NSLog(@"CONNECT");
     //resolution = RESOLUTION_LOW;
     //resolution = RESOLUTION_CIF;
     resolution = RESOLUTION_MEDIUM;
@@ -183,12 +183,12 @@ NSString * const TOKEN_KEY = @"tokenQR";
     {
         endpoint = [NSString stringWithFormat: @"/status/%@/0", tokenText];
         //Call API
+        [[CameraApi sharedInstance] setBaseUrl: apiURL];
         [[CameraApi sharedInstance] setEndpoint: endpoint];
         //    [[CameraApi sharedInstance] asyncResult];
         //Synchronous
         NSDictionary *jsonData = [[CameraApi sharedInstance] getResult];
-        NSLog(@"JSON: %@", jsonData);
-
+        //NSLog(@"JSON: %@", jsonData);
         [self doDisconnect];
         [[ UIApplication sharedApplication] setIdleTimerDisabled: NO];
         
@@ -198,6 +198,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
 }
 
 -(void)doDisconnect {
+//    NSLog(@"DISCONNECT");
     [upstream disconnect];
 }
 
@@ -228,7 +229,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
         [self getDataFromQR];
     }
     successToken = NO;
-    NSLog(@"ITSOD: %@", tokenText);
+    //NSLog(@"ITSOD: %@", tokenText);
     if(tokenText.length > 0)
     {
         pairedTokenLabel.text = [NSString stringWithFormat:@"Device Token: %@",tokenText];
@@ -239,12 +240,12 @@ NSString * const TOKEN_KEY = @"tokenQR";
 }
 
 -(void)saveTokenOnDevice {
-    NSLog(@"SAVE TOKEN: %@", textQR);
+    //NSLog(@"SAVE TOKEN: %@", textQR);
     [[NSUserDefaults standardUserDefaults] setObject:textQR forKey:TOKEN_KEY];
 }
 
 -(void)clearTokenOnDevice {
-    NSLog(@"CLEAR TOKEN: %@", textQR);
+    //NSLog(@"CLEAR TOKEN: %@", textQR);
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:TOKEN_KEY];
 }
 
@@ -255,7 +256,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
 
 -(IBAction)connectControl:(id)sender {
     
-    NSLog(@"connectControl: host = %@", apiURL);
+    //NSLog(@"connectControl: host = %@", apiURL);
     
     (!upstream) ? [self doConnectAPI] : [self doDisconnectAPI];
     
@@ -263,14 +264,14 @@ NSString * const TOKEN_KEY = @"tokenQR";
 
 -(IBAction)publishControl:(id)sender {
    
-    NSLog(@"publishControl: stream = %@", tokenText);
+    //NSLog(@"publishControl: stream = %@", tokenText);
 
     (upstream.state != STREAM_PLAYING) ? [upstream start] : [upstream pause];
 }
 
 -(IBAction)camerasToggle:(id)sender {
     
-    NSLog(@"camerasToggle:");
+    //NSLog(@"camerasToggle:");
     
     if (upstream.state != STREAM_PLAYING)
         return;
@@ -414,8 +415,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
         successToken = YES;
         apiURL = [NSString stringWithFormat:@"%@://%@", [url scheme], [url host]];
         tokenText = [url lastPathComponent];
-        NSLog(@"TOKEN TEXT: %@",
-              tokenText);
+        //NSLog(@"TOKEN TEXT: %@", tokenText);
     }
 }
 
