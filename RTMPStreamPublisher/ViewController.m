@@ -112,6 +112,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
             toolbar.hidden = NO;
             secondCV.hidden = YES;
         }
+        [loading stopAnimating];
     }
     else
     {
@@ -187,6 +188,7 @@ NSString * const TOKEN_KEY = @"tokenQR";
         [[CameraApi sharedInstance] setEndpoint: endpoint];
         //    [[CameraApi sharedInstance] asyncResult];
         //Synchronous
+        [[CameraApi sharedInstance] callAPI];
         NSDictionary *jsonData = [[CameraApi sharedInstance] getResult];
         //NSLog(@"JSON: %@", jsonData);
         [self doDisconnect];
